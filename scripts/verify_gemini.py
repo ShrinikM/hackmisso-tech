@@ -12,7 +12,7 @@ _root = Path(__file__).resolve().parents[1]
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(_root / ".env")
+    load_dotenv(_root / ".env", override=True)
 except ImportError:
     pass
 

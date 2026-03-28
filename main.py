@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -16,12 +17,23 @@ from domain_security import scan_domain
 logger = logging.getLogger(__name__)
 
 _BASE = Path(__file__).resolve().parent
-try:
-    from dotenv import load_dotenv
+_ENV_PATH = _BASE / ".env"
 
-    load_dotenv(_BASE / ".env")
-except ImportError:
-    pass
+
+def _refresh_env_from_dotenv() -> dict[str, Any]:
+    """Load project .env into os.environ. Safe to call multiple times."""
+    info: dict[str, Any] = {"path": str(_ENV_PATH), "exists": _ENV_PATH.is_file(), "dotenv_pkg": False}
+    try:
+        from dotenv import load_dotenv
+
+        info["dotenv_pkg"] = True
+        load_dotenv(_ENV_PATH, override=True)
+    except ImportError:
+        logger.warning("python-dotenv is not installed; .env will not load. Run: pip install python-dotenv")
+    return info
+
+
+_refresh_env_from_dotenv()
 
 with (_BASE / "assessment_questions.json").open(encoding="utf-8") as _f:
     _BUNDLE: dict[str, Any] = json.load(_f)
@@ -240,7 +252,21 @@ class DomainScanRequest(BaseModel):
     domain: str
 
 
-app = FastAPI(title="ClearRisk Assessment API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    info = _refresh_env_from_dotenv()
+    key_len = len((os.environ.get("GEMINI_API_KEY") or "").strip())
+    logger.info(
+        "Startup: .env path=%s exists=%s python-dotenv=%s GEMINI_API_KEY length=%s",
+        info["path"],
+        info["exists"],
+        info["dotenv_pkg"],
+        key_len,
+    )
+    yield
+
+
+app = FastAPI(title="ClearRisk Assessment API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -352,10 +378,14 @@ def health() -> dict[str, str]:
 
 @app.get("/api/ai-status")
 def ai_status() -> dict[str, Any]:
-    """Whether Gemini is configured (never exposes the API key)."""
+    """Whether Gemini is configured (never exposes the API key). Reloads .env each call."""
+    info = _refresh_env_from_dotenv()
     key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     return {
         "gemini_api_key_configured": bool(key),
         "gemini_api_key_length": len(key),
         "gemini_model": (os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash").strip(),
+        "env_file_path": info["path"],
+        "env_file_exists": info["exists"],
+        "python_dotenv_installed": info["dotenv_pkg"],
     }

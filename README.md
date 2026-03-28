@@ -72,7 +72,7 @@ pip install -r requirements.txt
 2. Paste a valid **`GEMINI_API_KEY`** from [Google AI Studio](https://aistudio.google.com/apikey) (keys are usually ~39 characters).
 3. Optional: `GEMINI_MODEL=gemini-2.5-flash` (default in code).
 
-`main.py` loads `.env` on startup via **python-dotenv**. Restart **uvicorn** after any `.env` change.
+`main.py` loads `.env` on startup via **python-dotenv** (`override=True` so your project `.env` wins over an empty `GEMINI_API_KEY` in Windows User environment variables). Restart **uvicorn** after any `.env` or code change.
 
 **Verify before demo:**
 
